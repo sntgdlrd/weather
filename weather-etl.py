@@ -21,7 +21,7 @@ def data_search(df, list, date):
         data = response.json()
 
         #Se toman los datos que necesitamos de data
-        new_data = {
+        df = df._append({
         'name': data['location']['name'],
         'region': data['location']['region'],
         'country': data['location']['country'],
@@ -48,10 +48,7 @@ def data_search(df, list, date):
         'had_moonset': 'No' in data['forecast']['forecastday'][0]['astro']['moonset'],
         'moon_phase': data['forecast']['forecastday'][0]['astro']['moon_phase'],
         'moon_illumination': data['forecast']['forecastday'][0]['astro']['moon_illumination'],
-        'entry_date': today}
-
-        #Se agregan al dataframe
-        df = df.append(pd.DataFrame(new_data), ignore_index=True)
+        'entry_date': today}, ignore_index=True)
     return(df)
 
 def data_add(df, regions):
@@ -81,7 +78,6 @@ def data_load_redshift(df, table_name, column_names):
         port=PORT
     )
     cur = conn.cursor()
-    print("Datos conexion", cur)
 
     # Verificar si la tabla existe, si no, crearla
     create_table_query = f'''
