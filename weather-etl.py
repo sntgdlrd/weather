@@ -48,14 +48,15 @@ def data_search(df, list, date):
         'had_moonset': 'No' in data['forecast']['forecastday'][0]['astro']['moonset'],
         'moon_phase': data['forecast']['forecastday'][0]['astro']['moon_phase'],
         'moon_illumination': data['forecast']['forecastday'][0]['astro']['moon_illumination'],
-        'entry_date': today}, ignore_index=True)
+        'entry_date': today,
+        'regionid': item['id']}, ignore_index=True)
     return(df)
 
 def data_add(df, regions):
     
     # Obtener la fecha de hoy
     today = datetime.today()
-    amount_days = 365
+    amount_days = 7
 
     # Iterar desde hoy hasta 365 días atrás
     for i in range(amount_days):
@@ -67,6 +68,51 @@ def data_add(df, regions):
         #print(formatted_date)
         df = data_search(df, regions, formatted_date)
     return(df)
+
+def null_check(df):
+    # Buscamos los registros que contengan al menos un valor nulo
+    df.replace('', pd.NA, inplace=True)
+    rows_nulls = df[df.isnull().any(axis=1)]
+
+    #Imprime la cant de filas que cumplan el requisito
+    print(len(rows_nulls))
+
+    #No hacemos mas acciones porque no es necesario en este caso,
+    #en caso de requerirlo, se podrian eliminar los registros y realizar el return del df modificado
+
+def duplicated_check(df):
+    # Encuentra las filas duplicadas en función de todas las columnas
+    duplicated = df[df.duplicated()]
+
+    # Obtenemeos la cantidad de registros duplicados para informalo
+    count = len(duplicated)
+    print(f"Se encontraron {count} registros duplicados en el df")
+
+    if count > 0:
+        # Elimimos los registros duplicados en caso de encontrarse
+        df_cleaned = df.drop_duplicates()
+        return df_cleaned
+    return df
+
+def transformations (df):
+    ###Debido a que la API trae algunos datos con un nombre distinto, hacemos este paso para estandarizar
+    ###Sabiendo que tanto Mendoza como Santiago del Estero son registros donde pasa eso, hacemos lo siguiente:
+    
+    #Buscamos aquellos que tengan esa diferencia de 'name'
+    condition = (df['region'] == 'Mendoza') & (df['name'] != 'Mendoza')
+
+    # Cambiamos el nombre al correcto
+    df.loc[condition, 'name'] = 'Mendoza'
+
+    # Mismos pasos con Santiago del Estero
+    condition = (df['region'] == 'Santiago del Estero') & (df['name'] != 'Santiago del Estero')
+    df.loc[condition, 'name'] = 'Santiago del Estero'
+
+    ###Para este ultimo caso, la api trae el dato region con null siempre, por lo que agregamos el dato correspondiente
+    condition = df['country'] == 'South Korea'
+    df.loc[condition,'region'] = 'Federal District'
+
+    return df
 
 def data_load_redshift(df, table_name, column_names):
     # Conexión a Redshift
@@ -81,7 +127,7 @@ def data_load_redshift(df, table_name, column_names):
 
     # Verificar si la tabla existe, si no, crearla
     create_table_query = f'''
-    CREATE TABLE IF NOT EXISTS {table_name} (id INT PRIMARY KEY, {column_names[0]} VARCHAR(45), {column_names[1]} VARCHAR(30), {column_names[2]} VARCHAR(30), {column_names[3]} DATE, {column_names[4]} FLOAT, {column_names[5]} FLOAT, {column_names[6]} FLOAT, {column_names[7]} FLOAT, {column_names[8]} FLOAT, {column_names[9]} FLOAT, {column_names[10]} FLOAT, {column_names[11]} FLOAT, {column_names[12]} BOOLEAN, {column_names[13]} INT, {column_names[14]} BOOLEAN, {column_names[15]} INT, {column_names[16]} VARCHAR(40), {column_names[17]} INT, {column_names[18]} VARCHAR(12), {column_names[19]} VARCHAR(12), {column_names[20]} VARCHAR(12), {column_names[21]} BOOLEAN, {column_names[22]} VARCHAR(12), {column_names[23]} BOOLEAN, {column_names[24]} VARCHAR(20), {column_names[25]} INT, {column_names[26]} TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS {table_name} (id INT, {column_names[27]} INT, {column_names[0]} VARCHAR(45), {column_names[1]} VARCHAR(30), {column_names[2]} VARCHAR(30), {column_names[3]} DATE, {column_names[4]} FLOAT, {column_names[5]} FLOAT, {column_names[6]} FLOAT, {column_names[7]} FLOAT, {column_names[8]} FLOAT, {column_names[9]} FLOAT, {column_names[10]} FLOAT, {column_names[11]} FLOAT, {column_names[12]} BOOLEAN, {column_names[13]} INT, {column_names[14]} BOOLEAN, {column_names[15]} INT, {column_names[16]} VARCHAR(40), {column_names[17]} INT, {column_names[18]} VARCHAR(12), {column_names[19]} VARCHAR(12), {column_names[20]} VARCHAR(12), {column_names[21]} BOOLEAN, {column_names[22]} VARCHAR(12), {column_names[23]} BOOLEAN, {column_names[24]} VARCHAR(20), {column_names[25]} INT, {column_names[26]} TIMESTAMP, PRIMARY KEY (id, {column_names[27]}, {column_names[26]}));
     '''
 
     cur.execute(create_table_query)
@@ -90,8 +136,8 @@ def data_load_redshift(df, table_name, column_names):
     # Insertar los datos en la tabla
     for index, row in df.iterrows():
         cur.execute(
-            f"INSERT INTO {table_name} VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-            (index, row[column_names[0]], row[column_names[1]], row[column_names[2]],row[column_names[3]], row[column_names[4]], row[column_names[5]],row[column_names[6]], row[column_names[7]], row[column_names[8]],row[column_names[9]], row[column_names[10]], row[column_names[11]],row[column_names[12]], row[column_names[13]], row[column_names[14]],row[column_names[15]], row[column_names[16]], row[column_names[17]],row[column_names[18]], row[column_names[19]], row[column_names[20]],row[column_names[21]], row[column_names[22]], row[column_names[23]], row[column_names[24]], row[column_names[25]], row[column_names[26]])
+            f"INSERT INTO {table_name} VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            (index, row[column_names[27]], row[column_names[0]], row[column_names[1]], row[column_names[2]],row[column_names[3]], row[column_names[4]], row[column_names[5]],row[column_names[6]], row[column_names[7]], row[column_names[8]],row[column_names[9]], row[column_names[10]], row[column_names[11]],row[column_names[12]], row[column_names[13]], row[column_names[14]],row[column_names[15]], row[column_names[16]], row[column_names[17]],row[column_names[18]], row[column_names[19]], row[column_names[20]],row[column_names[21]], row[column_names[22]], row[column_names[23]], row[column_names[24]], row[column_names[25]], row[column_names[26]])
         )
     
     # Commit de los cambios
@@ -103,7 +149,7 @@ def data_load_redshift(df, table_name, column_names):
 
     print(f"Datos cargados exitosamente en la tabla {table_name}")
 
-column_names = ['name', 'region', 'country', 'date', 'maxtemp_c', 'mintemp_c', 'avgtemp_c', 'maxwind_kph', 'totalprecip_mm', 'totalsnow_cm', 'avgvis_km', 'avghumidity', 'daily_will_it_rain', 'daily_chance_of_rain', 'daily_will_it_snow', 'daily_chance_of_snow', 'condition', 'uv', 'sunrise', 'sunset', 'moonrise', 'had_moonrise', 'moonset', 'had_moonset', 'moon_phase', 'moon_illumination', 'entry_date']
+column_names = ['name', 'region', 'country', 'date', 'maxtemp_c', 'mintemp_c', 'avgtemp_c', 'maxwind_kph', 'totalprecip_mm', 'totalsnow_cm', 'avgvis_km', 'avghumidity', 'daily_will_it_rain', 'daily_chance_of_rain', 'daily_will_it_snow', 'daily_chance_of_snow', 'condition', 'uv', 'sunrise', 'sunset', 'moonrise', 'had_moonrise', 'moonset', 'had_moonset', 'moon_phase', 'moon_illumination', 'entry_date', 'regionid']
 
 # Datos que quieres agregar
 prov = [{'id': 1 , 'name':'La Plata', 'region': 'Buenos Aires', 'country': 'Argentina'},
@@ -155,6 +201,13 @@ df = data_add(df, city)
 
 #Finalizacion del proceso
 print("Datos agregados exitosamente al Dataframe.")
+
+null_check(df)
+df=duplicated_check(df)
+df=transformations(df)
+
+#Finalizacion del proceso
+print("Finalizado el proceso de revision")
 
 table_name = "weatherapi"
 data_load_redshift(df, table_name, column_names)
